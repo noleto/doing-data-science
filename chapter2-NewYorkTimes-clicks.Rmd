@@ -1,0 +1,108 @@
+---
+title: "Exploratory Data Analysis on New York Times website clicks"
+date: "2015-03-21"
+output:
+  html_document:
+    theme: cerulean
+---
+
+<!-- For more info on RMarkdown see http://rmarkdown.rstudio.com/ -->
+
+<!-- Enter the code required to load your data in the space below. The data will be loaded but the line of code won't show up in your write up (echo=FALSE) in order to save space-->
+```{r echo=FALSE}
+nytData = read.csv(url("http://stat.columbia.edu/~rachel/datasets/nyt1.csv"))
+```
+
+### Introduction:
+Chapter 2: Doing Data Science exercise on EDA.
+
+
+### Data:
+
+The loaded dataset (nytData) represents one (simulated) day's worth of ads shown and clicks recorded on the New York Times home page in May 2012.
+Each row represents a single user. There are five columns: Age, Gender (0=female, 1=male), Impressions, Clicks and Signed-In.
+```{r}
+head(nytData)
+```
+
+### Let's do some EDA
+
+1. Create a new variable, AgeGroup, that categorizes users as "<18", "18-24", "25-34", "35-44", "45-54", "55-64", and "65+"
+```{r}
+nytData$AgeGroup = cut(nytData$Age, c(-Inf, 17, 24, 34, 44, 54, 64, Inf), c("<18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"))
+head(nytData)
+```
+
+To ensure that Gender variable remains readable we turn it as factor
+```{r}
+nytData$Gender = factor(nytData$Gender, levels=c(0,1), labels = c("female", "male"))
+head(nytData)
+```
+
+
+2. For a single day
+* Plot the distributions of numbers impressions and click-through-rate (CTR = #Clicks/#Impressions) for age categories.
+```{r}
+installed.packages("ggplot2")
+library(ggplot2)
+ggplot(data=nytData, aes(x=AgeGroup, y=Impressions, fill=AgeGroup)) + geom_bar(stat="identity") + theme_bw()
+```
+
+But wait. It seems the category "<18" is over-represented in the dataset, which might be counter-intuitive considering these data come from the New York Times home page. So let's inspect more narrowly our dataset.
+
+```{r}
+table(nytData$AgeGroup, nytData$Signed_In)
+table(nytData$Gender, nytData$Signed_In)
+```
+
+We concluded that only signed in users have ages and genders so we should not rely on values for unsigned users.
+```{r}
+nytData$AgeGroup[nytData$Signed_In == 0] = NA
+nytData$Gender[nytData$Signed_In == 0] = NA
+summary(nytData)
+```
+
+Now, by replotting the distributions of Impressions we can clearly distinguish important categories. 
+
+```{r}
+ggplot(data=na.omit(nytData), aes(x=AgeGroup, y=Impressions, fill=AgeGroup)) + geom_bar(stat="identity") + theme_bw()
+```
+
+Plot the distributions of Click-through-rate according to age category. We dont' care about clicks if there are no impressions.
+So far, we use the whole dataset to make plot but it may slow down the image processing and our analysis. Let's group data by AgeGroup and count the Impressions and Clicks
+
+```{r}
+library(dplyr)
+nytSummaryPerAge = na.omit(subset(nytData, Impressions>0)) %>% group_by(AgeGroup) %>% summarise(Impressions = sum(Impressions), Clicks = sum(Clicks))
+ggplot(data=nytSummaryPerAge, aes(x=AgeGroup, y=Clicks/Impressions, fill=AgeGroup)) + geom_bar(stat="identity") + theme_bw()
+```
+
+Based on the graph above, it suggests that "<18" and "65+" people are more likely to click on ads. However, when it is comme to data exploration process, we want to understand the data and gain good intuition about the process that generated the data.
+We will split the population into two user segments and check if the CTR remains the same. The user behaviour can be segmented in two groups:
+1) Impressions and no click 
+2) Impressions and at least one click.
+
+* Define a new variable to segment or categorize users based on their click behaviour.
+```{r}
+nytData$UserSegment[nytData$Impressions > 0] = "ImpsNoClick"
+nytData$UserSegment[nytData$Clicks > 0] = "Imps&Clicks"
+nytData$UserSegment = factor(nytData$UserSegment)
+summary(nytData$UserSegment)
+```
+
+* Explore the data and make visual and quantitative comparisons across user segements/demographics.
+```{r}
+nytCompressedData = na.omit(nytData) %>% group_by(AgeGroup, UserSegment, Gender) %>% summarise(Impressions = sum(Impressions), Clicks = sum(Clicks))
+head(nytCompressedData)
+
+ggplot(data=subset(nytCompressedData,UserSegment == "Imps&Clicks"), aes(x=AgeGroup, y=Clicks/Impressions, fill=Gender)) + 
+  geom_bar(colour="black", stat="identity", position=position_dodge(), size=0.3) +
+  scale_fill_hue(name="Sex of user segment") +
+  xlab("Age category") + 
+  ylab("CTR") + 
+  ggtitle("Click-through-rate by age categories and gender for the 2nd user segment.") + 
+  theme_bw()
+```
+
+### Conclusion:
+By segmenting users in according to their behaviours, we conclude that click-through-rate does not vary significantly by age and gender.
